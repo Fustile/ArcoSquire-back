@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArcoMage Backend Test</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .resource-input {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .resource-input input {
+            width: 60px;
+            padding: 5px;
+            text-align: center;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>ArcoMage Backend Test</h1>
+    
+    <div class="container">
+        <h2>Создание комнаты</h2>
+        <button onclick="createRoom()">Создать комнату</button>
+        <div id="roomInfo"></div>
+    </div>
+
+    <div class="container">
+        <h2>Подключение к комнате</h2>
+        <input type="text" id="roomIdInput" placeholder="Введите ID комнаты (4 символа)" maxlength="4">
+        <button onclick="joinRoom()">Присоединиться к комнате</button>
+        <div id="connectionStatus"></div>
+    </div>
+
+    <div class="container">
+        <h2>Статус игры</h2>
+        <div id="gameStatus" class="status info">Ожидание подключения второго игрока...</div>
+    </div>
+
+    <div class="container">
+        <h2>Управление ресурсами</h2>
+        <div class="resource-input">
+            <input type="number" id="resource1" value="0" min="0" max="50">
+            <input type="number" id="resource2" value="0" min="0" max="50">
+            <input type="number" id="resource3" value="0" min="0" max="50">
+            <input type="number" id="resource4" value="0" min="0" max="50">
+            <input type="number" id="resource5" value="0" min="0" max="50">
+        </div>
+        <button onclick="updateResources()" id="updateBtn" disabled>Обновить ресурсы</button>
+        <div id="resourcesStatus"></div>
+    </div>
+
+    <div class="container">
+        <h2>Ресурсы игроков</h2>
+        <div id="playersResources">
+            <div id="myResources">
+                <h3>Мои ресурсы:</h3>
+                <div id="myResourcesDisplay">[0, 0, 0, 0, 0]</div>
+            </div>
+            <div id="otherPlayerResources">
+                <h3>Ресурсы противника:</h3>
+                <div id="otherPlayerDisplay">Ожидание подключения...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Лог событий</h2>
+        <div id="log" class="log"></div>
+        <button onclick="clearLog()">Очистить лог</button>
+    </div>
+
+    <script>
+        let socket;
+        let currentRoomId = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        async function createRoom() {
+            try {
+                const response = await fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                currentRoomId = data.roomId;
+                
+                showStatus('roomInfo', `Комната создана: ${data.roomId}`, 'success');
+                log(`Комната создана: ${data.roomId}`, 'success');
+                
+                // Автоматически подключаемся к созданной комнате
+                joinRoom();
+            } catch (error) {
+                showStatus('roomInfo', `Ошибка: ${error.message}`, 'error');
+                log(`Ошибка создания комнаты: ${error.message}`, 'error');
+            }
+        }
+
+        function joinRoom() {
+            const roomId = currentRoomId || document.getElementById('roomIdInput').value.toUpperCase();
+            
+            if (!roomId || roomId.length !== 4) {
+                showStatus('connectionStatus', 'Введите корректный ID комнаты (4 символа)', 'error');
+                return;
+            }
+
+            // Инициализируем Socket.io соединение
+            if (!socket) {
+                socket = io();
+                
+                socket.on('connect', () => {
+                    log(`Подключение установлено. Socket ID: ${socket.id}`, 'success');
+                    showStatus('connectionStatus', `Подключено. Socket ID: ${socket.id}`, 'success');
+                });
+
+                socket.on('room-joined', (data) => {
+                    log(`Присоединились к комнате ${data.roomId}. Игроки: ${data.players.join(', ')}`, 'success');
+                    showStatus('connectionStatus', `В комнате ${data.roomId}. Игроков: ${data.players.length}/2`, 'success');
+                    
+                    if (data.gameState) {
+                        updateResourcesDisplay(data.gameState);
+                    }
+                });
+
+                socket.on('player-joined', (data) => {
+                    log(`Новый игрок присоединился: ${data.playerId}`, 'info');
+                    if (data.gameState) {
+                        updateResourcesDisplay(data.gameState);
+                    }
+                });
+
+                socket.on('game-started', (data) => {
+                    log(`🎮 ИГРА НАЧАЛАСЬ! Оба игрока подключены.`, 'success');
+                    showStatus('gameStatus', '🎮 ИГРА НАЧАЛАСЬ! Можете обновлять ресурсы.', 'success');
+                    document.getElementById('updateBtn').disabled = false;
+                    
+                    if (data.gameState) {
+                        updateResourcesDisplay(data.gameState);
+                    }
+                });
+
+                socket.on('resources-updated', (data) => {
+                    log(`Ресурсы обновлены игроком ${data.playerId}: [${data.resources.join(', ')}]`, 'info');
+                    
+                    if (data.gameState) {
+                        updateResourcesDisplay(data.gameState);
+                    }
+                });
+
+                socket.on('error', (data) => {
+                    log(`Ошибка: ${data.message}`, 'error');
+                    showStatus('connectionStatus', `Ошибка: ${data.message}`, 'error');
+                });
+
+                socket.on('disconnect', () => {
+                    log('Соединение разорвано', 'error');
+                    showStatus('connectionStatus', 'Соединение разорвано', 'error');
+                });
+            }
+
+            // Присоединяемся к комнате
+            socket.emit('join-room', roomId);
+            currentRoomId = roomId;
+            log(`Попытка присоединиться к комнате: ${roomId}`, 'info');
+        }
+
+        function updateResourcesDisplay(gameState) {
+            const myResources = gameState.resources[socket.id] || [0, 0, 0, 0, 0];
+            const otherPlayers = Object.keys(gameState.resources).filter(id => id !== socket.id);
+            const otherPlayerResources = otherPlayers.length > 0 ? gameState.resources[otherPlayers[0]] : [0, 0, 0, 0, 0];
+            
+            document.getElementById('myResourcesDisplay').textContent = `[${myResources.join(', ')}]`;
+            document.getElementById('otherPlayerDisplay').textContent = otherPlayers.length > 0 
+                ? `[${otherPlayerResources.join(', ')}]` 
+                : 'Ожидание подключения...';
+        }
+
+        function updateResources() {
+            if (!socket || !currentRoomId) {
+                showStatus('resourcesStatus', 'Сначала присоединитесь к комнате', 'error');
+                return;
+            }
+
+            const resources = [
+                parseInt(document.getElementById('resource1').value) || 0,
+                parseInt(document.getElementById('resource2').value) || 0,
+                parseInt(document.getElementById('resource3').value) || 0,
+                parseInt(document.getElementById('resource4').value) || 0,
+                parseInt(document.getElementById('resource5').value) || 0
+            ];
+
+            // Validate resources (0-50 range)
+            for (let i = 0; i < resources.length; i++) {
+                if (resources[i] < 0 || resources[i] > 50) {
+                    showStatus('resourcesStatus', `Ресурс ${i + 1} должен быть от 0 до 50`, 'error');
+                    return;
+                }
+            }
+
+            socket.emit('update-resources', {
+                roomId: currentRoomId,
+                resources: resources
+            });
+
+            log(`Отправлены ресурсы: [${resources.join(', ')}]`, 'info');
+            showStatus('resourcesStatus', `Ресурсы отправлены: [${resources.join(', ')}]`, 'success');
+        }
+
+        // Автоматическое подключение при загрузке страницы
+        window.onload = () => {
+            log('Страница загружена. Готов к тестированию.', 'info');
+        };
+    </script>
+</body>
+</html>
