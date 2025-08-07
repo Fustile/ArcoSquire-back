@@ -1,6 +1,6 @@
-# ArcoMage Backend
+# ArcoSquire-back
 
-Бекенд для настольной игры ArcoMage с real-time коммуникацией через Socket.io.
+Backend for ArcoMage card game with Socket.io real-time communication
 
 ## Возможности
 
