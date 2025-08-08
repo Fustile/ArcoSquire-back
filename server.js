@@ -57,8 +57,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (room.players.length >= 2) {
-      socket.emit('error', { message: 'Room is full' });
+    if (roomManager.isRoomFull(roomId)) {
+      socket.emit('room-full', { 
+        message: 'Room is full. Maximum 2 players allowed.',
+        roomId: roomId
+      });
       return;
     }
 
@@ -119,21 +122,77 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Broadcast updated game state to all players in the room
-    const gameState = roomManager.getRoomGameState(roomId);
-    io.to(roomId).emit('resources-updated', {
+    // Send updated resources ONLY to other players in the room
+    socket.to(roomId).emit('resources-updated', {
       playerId: socket.id,
       resources,
-      gameState
+      roomId: roomId
     });
     
     console.log(`Resources updated for player ${socket.id} in room ${roomId}: [${resources.join(', ')}]`);
   });
 
+  // Get game state
+  socket.on('get-game-state', (data) => {
+    const { roomId } = data;
+    const gameState = roomManager.getGameStateForPlayer(roomId, socket.id);
+    
+    if (!gameState) {
+      socket.emit('error', { message: 'Room not found or player not in room' });
+      return;
+    }
+    
+    socket.emit('game-state', gameState);
+    console.log(`Game state sent to player ${socket.id} in room ${roomId}`);
+  });
+
+  // Get opponent resources
+  socket.on('get-opponent-resources', (data) => {
+    const { roomId } = data;
+    const room = roomManager.getRoom(roomId);
+    
+    if (!room || !room.players.includes(socket.id)) {
+      socket.emit('error', { message: 'Room not found or player not in room' });
+      return;
+    }
+    
+    // Find opponent resources
+    const opponentId = room.players.find(id => id !== socket.id);
+    const opponentResources = opponentId ? room.gameState.resources[opponentId] || [0, 0, 0, 0, 0] : [0, 0, 0, 0, 0];
+    
+    socket.emit('opponent-resources', {
+      roomId: roomId,
+      resources: opponentResources
+    });
+    
+    console.log(`Opponent resources sent to player ${socket.id} in room ${roomId}: [${opponentResources.join(', ')}]`);
+  });
+
   // Disconnect handling
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    
+    // Find which room the player was in before removing them
+    let playerRoomId = null;
+    for (const [roomId, room] of roomManager.rooms.entries()) {
+      if (room.players.includes(socket.id)) {
+        playerRoomId = roomId;
+        break;
+      }
+    }
+    
+    // Remove player from all rooms
     roomManager.removePlayerFromAllRooms(socket.id);
+    
+    // Notify other players in the room that this player left
+    if (playerRoomId) {
+      socket.to(playerRoomId).emit('player-left', {
+        playerId: socket.id,
+        roomId: playerRoomId,
+        remainingPlayers: roomManager.getRoom(playerRoomId)?.players || []
+      });
+      console.log(`Player ${socket.id} left room ${playerRoomId}`);
+    }
   });
 });
 

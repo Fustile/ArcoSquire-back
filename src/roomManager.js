@@ -117,6 +117,26 @@ class RoomManager {
       resources: room.gameState.resources
     };
   }
+
+  getGameStateForPlayer(roomId, playerId) {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.players.includes(playerId)) return null;
+    
+    // Find opponent resources
+    const opponentId = room.players.find(id => id !== playerId);
+    const opponentResources = opponentId ? room.gameState.resources[opponentId] || [0, 0, 0, 0, 0] : [0, 0, 0, 0, 0];
+    
+    return {
+      players: room.players,
+      opponentResources: opponentResources,
+      roomId: room.id
+    };
+  }
+
+  isRoomFull(roomId) {
+    const room = this.rooms.get(roomId);
+    return room ? room.players.length >= 2 : false;
+  }
 }
 
 // Export functions for backward compatibility

@@ -43,12 +43,18 @@ npm run dev
 #### Клиент → Сервер
 - `join-room` - Присоединиться к комнате
 - `update-resources` - Обновить ресурсы игрока
+- `get-game-state` - Запросить состояние игры
+- `get-opponent-resources` - Запросить ресурсы противника
 
 #### Сервер → Клиент
 - `room-joined` - Подтверждение присоединения к комнате
 - `player-joined` - Новый игрок присоединился
 - `game-started` - Игра началась (оба игрока подключены)
-- `resources-updated` - Ресурсы игрока обновлены
+- `resources-updated` - Ресурсы игрока обновлены (отправляется только другим игрокам)
+- `room-full` - Комната заполнена (третий игрок пытается присоединиться)
+- `player-left` - Игрок покинул комнату
+- `game-state` - Состояние игры (ответ на запрос)
+- `opponent-resources` - Ресурсы противника (ответ на запрос)
 - `error` - Ошибка
 
 ## Тестирование
@@ -90,6 +96,33 @@ socket.emit('update-resources', {
   roomId: 'A1B2',
   resources: [10, 5, 3, 7, 2]
 });
+```
+
+### Запрос состояния игры
+```javascript
+socket.emit('get-game-state', {
+  roomId: 'A1B2'
+});
+
+// Ответ будет содержать:
+// {
+//   players: ["player1_id", "player2_id"],
+//   opponentResources: [10, 5, 3, 7, 2],
+//   roomId: "A1B2"
+// }
+```
+
+### Запрос ресурсов противника
+```javascript
+socket.emit('get-opponent-resources', {
+  roomId: 'A1B2'
+});
+
+// Ответ будет содержать:
+// {
+//   roomId: "A1B2",
+//   resources: [10, 5, 3, 7, 2]
+// }
 ```
 
 ## Формат данных
